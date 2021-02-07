@@ -1,6 +1,5 @@
 this is a website use python3.x and vue.
-as below:
-├── helloweb // fron use vue
+├── helloweb
 │   ├── build
 │   │   ├── build.js
 │   │   ├── check-versions.js
@@ -49,7 +48,7 @@ as below:
 │           ├── setup.js
 │           └── specs
 │               └── HelloWorld.spec.js
-├── piweb // backend use python
+├── piweb
 │   ├── manage.py
 │   ├── piweb
 │   │   ├── __init__.py

@@ -1,4 +1,3 @@
-this is a website use python3.x and vue
 piweb: the backend use python django
     web site use django framework provide api for all client to report data and save.
 helloweb: the front use js vue

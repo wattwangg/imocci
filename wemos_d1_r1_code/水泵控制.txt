@@ -40,7 +40,7 @@ void handleConoect() {
 void setup()
 {
 	WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP("JC00001", "123456");
+    WiFi.softAP("JC00001", "123456", 1, 1);
 	WiFi.softAPsetHostname("JC00001");
 	IPAddress local_ip(192, 168, 4, 1);
 	IPAddress gateway(192, 168, 4, 1);
@@ -165,6 +165,8 @@ enum SW {
 }
 bool is_sb_on = false;
 SW sw = SW_UNKNOWN;
+int id0 = -1;
+int id1 = -1;
 
 void handleConoect() {
 	String res = "{";
@@ -184,8 +186,8 @@ void handleSW() {
 		Serial.println("");
 		Serial.print("d1: ");
 		Serial.println(d1);
-		int id0 = d0.toInt();
-		int id1 = d1.toInt();
+		id0 = d0.toInt();
+		id1 = d1.toInt();
 		// 需要判断当前处于什么状态
 		if (id0 == LOW && id1 == LOW) {
 			sw = SW_LOW;
@@ -201,16 +203,26 @@ void handleSW() {
         server.send(200, "application/json", "{\"code\":0}");
 	}
 }
+void handleGetSW() {
+	String res = "{";
+	//开关状态
+	res.concat(String("\"id0\":")+String(id0)+String(","));
+	res.concat(String("\"id1\":")+String(id1)+String(","));
+	res.concat(String("\"sw\":")+String(sw));
+	res.concat("\"}");
+	server.send(200, "application/json", res);
+}
 void setup()
 {
 	WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP("JK00001", "123456");
+    WiFi.softAP("JK00001", "123456", 1, 1);
 	WiFi.softAPsetHostname("JK00001");
 	IPAddress local_ip(192, 168, 3, 1);
 	IPAddress gateway(192, 168, 3, 1);
 	IPAddress subnet(255, 255, 255, 0);
 	server.on("/", handleRoot);
 	server.on("/sw", handleSW);
+	server.on("/getsw", handleGetSW);
 	WiFi.config(local_ip, gateway, subnet);
 	Serial.print("主机名:");
 	Serial.println(WiFi.softAPgetHostname());

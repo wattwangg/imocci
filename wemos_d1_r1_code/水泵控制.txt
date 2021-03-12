@@ -1,0 +1,283 @@
+/*       |--采集01
+ 控制端 <
+		 |--采集02
+*/
+//---------------------------------------------------------------------------------
+// 采集水位端 WIFI_AP_STA
+// ssid JC00001
+// psw  123456
+
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+#include <ESPFlashString.h>
+#include <ArduinoOTA.h>
+#include <HTTPClient.h>
+
+static const uint8_t PIN_D0 = 16;            //RX
+static const uint8_t PIN_D1 = 5;            //TX
+static const uint8_t PIN_D2 = 4;
+static const uint8_t PIN_D3 = 0;        //SCL
+static const uint8_t PIN_D4 = 2;        //SDA
+static const uint8_t PIN_D5 = 14;       //SCK
+static const uint8_t PIN_D6 = 12;       //MISO
+static const uint8_t PIN_D7 = 13;       //MOSI
+static const uint8_t PIN_D8 = 15;
+static const uint8_t PIN_A0 = 17;
+static const uint8_t PIN_LED = 2;
+
+int D0 = -1;
+int D1 = -1;
+ESP8266WebServer server(80);
+void handleConoect() {
+	String res = "{";
+	//开关状态
+	res.concat(String("\"D0\":")+String(digitalRead(PIN_D0))+String(","));
+	res.concat(String("\"D1\":")+String(digitalRead(PIN_D1));
+	res.concat("\"}");
+	server.send(200, "application/json", res);
+}
+void setup()
+{
+	WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP("JC00001", "123456");
+	WiFi.softAPsetHostname("JC00001");
+	IPAddress local_ip(192, 168, 4, 1);
+	IPAddress gateway(192, 168, 4, 1);
+	IPAddress subnet(255, 255, 255, 0);
+	WiFi.config(local_ip, gateway, subnet);
+	server.on("/", handleRoot);
+	Serial.print("主机名:");
+	Serial.println(WiFi.softAPgetHostname());
+	Serial.print("主机IP:");
+	Serial.println(WiFi.softAPIP());
+	Serial.print("主机IPV6:");
+	Serial.println(WiFi.softAPIPv6());
+	Serial.print("主机SSID:");
+	Serial.println(WiFi.SSID());
+	Serial.print("主机广播IP:");
+	Serial.println(WiFi.softAPBroadcastIP());
+	Serial.print("主机mac地址:");
+	Serial.println(WiFi.softAPmacAddress());
+	WiFi.setAutoReconnect(true);
+	WiFi.begin("JK00001", "123456"); // 连接控制端
+	while (!WiFi.isConnected())
+	{
+		delay(500);
+		Serial.print(".");
+	}
+	Serial.println("WIFI连接JK00001成功!");
+	IPAddress ip = WiFi.localIP();
+	Serial.println("localIP：" + localIP);
+	// 初始化GPIO
+	pinMode(PIN_D0, INPUT);
+	pinMode(PIN_D1, INPUT);
+	pinMode(PIN_LED, OUTPUT);
+}
+bool ledon = false;
+void loop()
+{
+	server.handleClient();
+	//判断wifi是否连接到主控
+	Serial.print("主机状态:");
+	int status = WiFi.status();
+	Serial.println(status);
+	if (status == WL_DISCONNECTED) {
+		// wifi 断开了, LED 长亮
+		digitalWrite(PIN_LED, HIGH);
+		delay(10);
+		return;
+	}
+	
+	Serial.print("主机连接个数:");
+	Serial.println(WiFi.softAPgetStationNum());
+	Serial.print("主机网络ID:");
+	Serial.println(WiFi.softAPNetworkID());
+	
+	delay(1000);
+	D0 = digitalRead(PIN_D0)
+	D1 = digitalRead(PIN_D1)
+	if ( D0 == LOW && D1 == LOW) {
+		// 都是低电平
+		digitalWrite(PIN_LED, HIGH)
+	} else if ( D0 == HIGH && D1 == HIGH) {
+		// 都是高电平
+		digitalWrite(PIN_LED, LOW)
+	} else {
+		// led blink
+		if(ledon) {
+			digitalWrite(PIN_LED, LOW)
+		} else {
+			digitalWrite(PIN_LED, HIGH)
+		}
+		ledon = !ledon;
+	}
+	//向主机报告水位状态(向192.168.3.1发送http)
+	HTTPClient http;
+	Serial.print("[HTTP] begin...\n");
+	String url = "http://192.168.3.1/sw?d0=";
+	url.concat(String(d0));
+	url.concat("&d1=");
+	url.concat(String(d1));
+	http.begin(url); //HTTP
+	Serial.println(url);
+	Serial.print("[HTTP] GET...\n");
+	int httpCode = http.GET();
+	if(httpCode == HTTP_CODE_OK) {
+		String payload = http.getString();
+		Serial.println(payload);
+	}
+}
+
+//----------------------------------------------------------------------------------------------
+// 控制开关端 WIFI_AP_STA
+// ssid JK00001
+// psw  123456
+#include <ESP8266WiFi.h>
+#include <WiFiUdp.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+#include <ESPFlashString.h>
+#include <ESP8266mDNS.h>
+#include <ArduinoOTA.h>
+
+static const uint8_t PIN_D0 = 16;            //RX
+static const uint8_t PIN_D1 = 5;            //TX
+static const uint8_t PIN_D2 = 4;
+static const uint8_t PIN_D3 = 0;        //SCL
+static const uint8_t PIN_D4 = 2;        //SDA
+static const uint8_t PIN_D5 = 14;       //SCK
+static const uint8_t PIN_D6 = 12;       //MISO
+static const uint8_t PIN_D7 = 13;       //MOSI
+static const uint8_t PIN_D8 = 15;
+static const uint8_t PIN_A0 = 17;
+static const uint8_t PIN_LED = 2;
+
+ESP8266WebServer server(80);
+#define MAX_LOSS_TIME 100; // 1min 40sec
+int left_time = MAX_LOSS_TIME;
+// 正常  低  高   未知
+enum SW {
+	SW_NORMAL = 0,
+	SW_LOW,
+	SW_HI,
+	SW_UNKNOWN
+}
+bool is_sb_on = false;
+SW sw = SW_UNKNOWN;
+
+void handleConoect() {
+	String res = "{";
+	//开关状态
+	res.concat(String("\"is_sb_on\":")+String(is_sb_on ? 1 : 0)+String(","));
+	res.concat(String("\"sw\":")+String(sw));
+	res.concat("\"}");
+	server.send(200, "application/json", res);
+}
+void handleSW() {
+	if(server.args() > 0) {
+		left_time = MAX_LOSS_TIME;
+		String d0 = server.arg(0);
+		String d1 = server.arg(1);
+		Serial.print("d0: ");
+		Serial.print(d0);
+		Serial.println("");
+		Serial.print("d1: ");
+		Serial.println(d1);
+		int id0 = d0.toInt();
+		int id1 = d1.toInt();
+		// 需要判断当前处于什么状态
+		if (id0 == LOW && id1 == LOW) {
+			sw = SW_LOW;
+			Serial.print("SW_LOW 水位低");
+		} else if (id0 == HIGH && id1 == HIGH) {
+			sw = SW_HI;
+			Serial.print("HIGH 水位高");
+		} else {
+			// 水位处于，高低水位之间
+			sw = SW_NORMAL;
+			Serial.print("SW_NORMAL 水位正常");
+		}
+        server.send(200, "application/json", "{\"code\":0}");
+	}
+}
+void setup()
+{
+	WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP("JK00001", "123456");
+	WiFi.softAPsetHostname("JK00001");
+	IPAddress local_ip(192, 168, 3, 1);
+	IPAddress gateway(192, 168, 3, 1);
+	IPAddress subnet(255, 255, 255, 0);
+	server.on("/", handleRoot);
+	server.on("/sw", handleSW);
+	WiFi.config(local_ip, gateway, subnet);
+	Serial.print("主机名:");
+	Serial.println(WiFi.softAPgetHostname());
+	Serial.print("主机IP:");
+	Serial.println(WiFi.softAPIP());
+	Serial.print("主机IPV6:");
+	Serial.println(WiFi.softAPIPv6());
+	Serial.print("主机SSID:");
+	Serial.println(WiFi.SSID());
+	Serial.print("主机广播IP:");
+	Serial.println(WiFi.softAPBroadcastIP());
+	Serial.print("主机mac地址:");
+	Serial.println(WiFi.softAPmacAddress());
+	/*
+	WiFi.setAutoReconnect(true);
+	WiFi.begin("orangepi", "123456"); // 连接控制端
+	while (!WiFi.isConnected())
+	{
+		delay(500);
+		Serial.print(".");
+	}
+	Serial.println("WIFI连接JK00001成功!");
+	IPAddress ip = WiFi.localIP();
+	Serial.println("localIP：" + localIP);
+	*/
+	// 初始化GPIO
+	pinMode(PIN_D0, OUTPUT);
+	pinMode(PIN_D1, OUTPUT);
+	pinMode(PIN_LED, OUTPUT);
+}
+bool led_on = false;
+void loop()
+{
+	left_time -= 1;
+	server.handleClient();
+	Serial.print("主机连接个数:");
+	Serial.println(WiFi.softAPgetStationNum());
+	Serial.print("主机网络ID:");
+	Serial.println(WiFi.softAPNetworkID());
+	Serial.print("主机状态:");
+	Serial.println(WiFi.status());
+	delay(1000);
+	//判断是否长事件没有收到采集信号，如果长时间没有收到，水泵处于工作状态，关闭水泵，防止溢出
+	if(left_time == 0) {
+		// 1 min 40 sec 没有收到采集端信息，关闭水泵，防止溢出
+		is_sb_on = false;
+		digitalWrite(PIN_D0, LOW); // 关泵
+		Serial.print("关泵");
+		return;
+	}
+	//判断当前水位状态，决定是否开泵
+	if (is_sb_on == false && sw == SW_LOW) {
+		is_sb_on = true;
+		digitalWrite(PIN_D0, HIGH); // 开泵
+		Serial.print("开泵");
+	} else if( is_sb_on && sw == SW_HI){
+		is_sb_on = false;
+		digitalWrite(PIN_D0, LOW); // 关泵
+		Serial.print("关泵");
+	}
+	if (sw == SW_UNKNOWN) {
+		// 水位未知
+		digitalWrite(PIN_LED, HIGH); // 常亮
+	} else if (led_on) {
+		digitalWrite(PIN_LED, LOW);
+	} else {
+		digitalWrite(PIN_LED, HIGH);
+	}
+	led_on = !led_on;
+}

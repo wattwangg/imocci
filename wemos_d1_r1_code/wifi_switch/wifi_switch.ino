@@ -14,7 +14,7 @@ static const uint8_t PIN_D4 = 2;        //SDA
 static const uint8_t PIN_D5 = 14;       //SCK
 static const uint8_t PIN_D6 = 12;       //MISO
 static const uint8_t PIN_D7 = 13;       //MOSI
-static const uint8_t PIN_D8 = 16;
+static const uint8_t PIN_D8 = 15;
 static const uint8_t PIN_A0_ESP = 17;
 static const uint8_t PIN_LED = 2;
 
